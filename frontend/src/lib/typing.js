@@ -14,16 +14,27 @@
 // a very fast typist. That is why a paste is a flag for a human to look at,
 // not a verdict.
 
-import { BULK_INSERT_CHARS, MAX_PLAUSIBLE_CPS } from "../thresholds";
+import { BULK_INSERT_CHARS, MAX_PLAUSIBLE_CPS } from "../thresholds.js";
+
+// Speed is measured over a rolling window rather than between consecutive
+// keystrokes. Measuring a single gap does not work: real typing grows the text
+// by exactly one character at a time, so per-keystroke deltas carry no
+// information about sustained rate, and a very fast typist produces intervals
+// so short that rounding dominates. A window of ~1s smooths that out and is
+// also the timescale the research figures are quoted at (WPM).
+const SPEED_WINDOW_MS = 1000;
 
 export function createTypingTracker() {
   let keystrokes = 0;
   let startedAt = null;
   let lastLength = 0;
-  let lastTickAt = null;
   let maxCps = 0;
   let pasted = false;
+  let inBurst = false; // currently inside a too-fast burst
   const flags = []; // { kind, chars } for each suspicious insertion
+
+  // Rolling record of {at, added} for the last SPEED_WINDOW_MS.
+  let recent = [];
 
   return {
     /** Every key press in the answer box. */
@@ -55,23 +66,44 @@ export function createTypingTracker() {
           flags.push({ kind: "bulk_insert", chars: grew });
         }
 
-        // Sustained rate between edits. Guarded against the first tick and
-        // against division by a tiny interval producing nonsense.
-        if (lastTickAt !== null) {
-          const seconds = (now - lastTickAt) / 1000;
-          if (seconds > 0.05) {
-            const cps = grew / seconds;
-            if (cps > maxCps) maxCps = cps;
-            if (cps > MAX_PLAUSIBLE_CPS && grew > 5) {
+        // Sustained rate across a rolling window. Keep the previous boundary
+        // sample so the window has a start time to measure from -- without it
+        // the span always omits one interval and under-reports the rate.
+        recent.push({ at: now, added: grew });
+        const cutoff = now - SPEED_WINDOW_MS;
+        while (recent.length > 2 && recent[1].at < cutoff) recent.shift();
+
+        const windowStart = recent[0].at;
+        const span = now - windowStart;
+        // Characters typed *after* the window start, i.e. within the span.
+        const charsInWindow = recent
+          .slice(1)
+          .reduce((n, r) => n + r.added, 0);
+
+        // Judge once enough characters have accumulated to be meaningful.
+        // Requiring a minimum span instead would never trigger on genuinely
+        // machine-speed input, which delivers everything before the span is
+        // reached.
+        if (span > 0 && charsInWindow >= 5) {
+          const cps = (charsInWindow / span) * 1000;
+          if (cps > maxCps) maxCps = cps;
+
+          // One sustained burst should produce one flag, not one per
+          // keystroke, so only record a new burst after typing has dropped
+          // back to a plausible rate in between.
+          if (cps > MAX_PLAUSIBLE_CPS) {
+            if (!inBurst) {
+              inBurst = true;
               pasted = true;
-              flags.push({ kind: "fast_burst", chars: grew });
+              flags.push({ kind: "fast_burst", chars: charsInWindow });
             }
+          } else {
+            inBurst = false;
           }
         }
       }
 
       lastLength = value.length;
-      lastTickAt = now;
     },
 
     /** Snapshot for saving alongside the answer. */
@@ -90,10 +122,11 @@ export function createTypingTracker() {
       keystrokes = 0;
       startedAt = null;
       lastLength = 0;
-      lastTickAt = null;
       maxCps = 0;
       pasted = false;
+      inBurst = false;
       flags.length = 0;
+      recent = [];
     },
 
     /** Back-navigation returns to existing text; do not count it as typed. */
