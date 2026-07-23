@@ -139,6 +139,43 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* Live monitor: the candidate can always see they are on camera, and what
+   the system currently thinks. Nothing is hidden from them. */
+.monitor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eceef1;
+}
+
+.thumb {
+  width: 96px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+  transform: scaleX(-1);
+}
+
+.chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip-ok {
+  background: #eaf6ec;
+  color: #1e6b32;
+}
+
+.chip-warn {
+  background: #fdf4e3;
+  color: #8a5a00;
+}
+
 .band {
   display: flex;
   align-items: center;
