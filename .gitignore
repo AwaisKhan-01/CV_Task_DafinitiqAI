@@ -1,0 +1,16 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# The database is created on first run. Reviewers should generate their own
+# rather than inherit test data.
+backend/proctoring.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# Editor / OS
+.DS_Store
+.vscode/
